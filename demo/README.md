@@ -20,6 +20,7 @@ local test path so you can verify behaviour before you ever touch the cluster.
 
 | Path | What it is |
 |---|---|
+| `RUNBOOK.md` | Step-by-step: standing up and rehearsing the demo in OpenChoreo |
 | `internal-billing-api/` | Tiny zero-dependency service that returns **fake** credentials — the lateral-movement target |
 | `build-metrics-helper/` | The npm package. Benign module + a defanged Nx-style `postinstall` |
 | `build-metrics-helper/RECON_PROMPT.md` | The prompt the postinstall hands to the agent |
