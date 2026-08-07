@@ -1,0 +1,10 @@
+{
+  "name": "internal-billing-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DEMO target service that returns fake credentials for the Agent Sandbox video",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "build-metrics-helper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DEMO PROP — benign build helper with a defanged, Nx-style postinstall. Never publish to public npm.",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "index.js",
+    "scripts/",
+    "RECON_PROMPT.md",
+    "README.md"
+  ]
+}
