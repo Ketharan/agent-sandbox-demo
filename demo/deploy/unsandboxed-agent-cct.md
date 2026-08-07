@@ -1,70 +1,130 @@
-# Authoring the unsandboxed agent ClusterComponentType
+# Authoring the unsandboxed baseline ClusterComponentType
 
-For the demo, `agent-regular` and `agent-sandbox` must be the **same workload** —
-same Claude-with-Repo workspace, same agent CLI, same repo clone — differing
-**only** in isolation. There is no "isolation = none" switch on the sandboxed
-type: it always expands to a Kata microVM. So the baseline needs its own
-ClusterComponentType — an unsandboxed twin of the sandboxed Claude-with-Repo CCT.
+For the demo, `agent-regular` and `agent-sandbox` must be the **same workload**
+(same Claude-with-Repo workspace + agent CLI), differing only in isolation. This
+was verified against the shipped `agent-sandbox` chart and the base `service`
+CCT — see "Why" below; the short version is that the baseline has to be a plain
+**Deployment**, not the sandbox type with the Kata fields removed.
 
-## Recipe: derive it from the sandboxed CCT
+## Why (verified against the real CCTs)
 
-Start from your existing sandboxed Claude-with-Repo CCT (`ai-agent-claude` /
-the claude-with-repo type) and produce a new one, e.g.
-**`ai-agent-claude-unsandboxed`**.
+- The named agent types (`ai-agent-claude`, and your custom **claude-with-repo**
+  built on the same pattern) deploy via **SandboxTemplate + SandboxClaim**, and
+  their podTemplate hardcodes `runtimeClassName: kata-qemu`,
+  `nodeSelector: kata-enabled`, `tolerations: sandbox=true`, **and
+  `automountServiceAccountToken: false`**. There is no "isolation off" switch.
+- The generic `ai-agent` type *does* expose an `isolationTier` param
+  (`runc`/`gvisor`/`kata`) — **but `runc` is still a sandbox**: it goes through
+  SandboxClaim and still sets `automountServiceAccountToken: false`. So a runc
+  agent has **no SA token** and isn't a "plain deployment" — it won't reproduce
+  the regular side of the demo contrast.
+- Stripping only the Kata fields from the sandbox CCT leaves
+  SandboxTemplate/SandboxClaim + `automountServiceAccountToken: false` in place —
+  still a sandbox pod, still no token.
 
-**Keep** (this is what makes the demo identical on both sides):
-- the `git-clone` **init container** (clones the repo into `/workspace/repo`);
-- the `workspace` **emptyDir** volume, mounted at `/workspace` in both containers;
-- the **main agent container** with `workingDir: /workspace/repo` and the agent CLI;
-- the **envVars** (`ANTHROPIC_MODEL`, `GIT_REPO_URL`, `GIT_REF`, `GIT_TOKEN`);
-- `targetPlane: dataplane`.
+**Therefore:** the baseline is a normal `apps/v1 Deployment` (like the base
+`service`/`worker` types), with the SA token auto-mounted (default), plus your
+git-clone init container. That gives the regular side its shared host kernel,
+mounted SA token, and reachable internal services — the exact contrast.
 
-**Remove** (this is what makes it a plain container on a normal node):
-- the **SandboxClaim / sandbox expansion** — it deploys as an ordinary workload;
-- `runtimeClassName: kata-qemu`;
-- the **Kata node scheduling** — `nodeSelector: kata-enabled=true` and the
-  `sandbox=true:NoSchedule` toleration. Without them it lands on the regular
-  Auto Mode nodes, not the hardware-accelerated pool.
+## Scaffold — derive from your claude-with-repo CCT
 
-Register it under a distinct name and make sure your component-type → node-pool
-mapping does **not** send it to the accelerated pool.
-
-## The workload fragment to keep (from the Claude-with-Repo type)
+Keep your claude-with-repo type's **parameters, envVars, and scaffolder wiring
+unchanged**. The only structural changes: emit a **Deployment** instead of
+SandboxTemplate/SandboxClaim, drop the Kata scheduling, and **do not** set
+`automountServiceAccountToken: false`.
 
 ```yaml
-initContainers:
-  - name: git-clone
-    image: ${workload.container.image}
-    command: ["/bin/sh", "-c"]
-    args:
-      - |
-        set -e
-        BRANCH=""
-        [ -n "$GIT_REF" ] && BRANCH="--branch $GIT_REF"
-        rm -rf /workspace/repo
-        git -c credential.helper='!f() { echo username=x-access-token;
-          echo "password=$GIT_TOKEN"; }; f' \
-          clone --depth 1 $BRANCH "$GIT_REPO_URL" /workspace/repo
-volumes:
-  - name: workspace
-    emptyDir: {}
-# main agent container: mount `workspace` at /workspace, workingDir /workspace/repo
-envVars:
-  - { key: ANTHROPIC_MODEL, value: "${{ parameters.model }}" }
-  - { key: GIT_REPO_URL,    value: "${{ parameters.gitRepoUrl }}" }
-  - { key: GIT_REF,         value: "${{ parameters.gitRef }}" }
-  - { key: GIT_TOKEN,       value: "${{ secrets.gitToken | default('x-no-token', true) }}" }
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterComponentType
+metadata:
+  name: ai-agent-claude-repo-unsandboxed
+  annotations:
+    openchoreo.dev/display-name: "AI Agent — Claude (Repo, unsandboxed baseline)"
+    openchoreo.dev/description: "Demo baseline: the Claude-with-Repo workload as a plain container (no Kata)."
+spec:
+  workloadType: deployment
+  # allowedWorkflows / parameters (model, gitRepoUrl, gitRef, gitToken) /
+  # environmentConfigs: copy verbatim from your claude-with-repo CCT.
+  resources:
+    - id: deployment
+      targetPlane: dataplane
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          replicas: 1
+          selector:
+            matchLabels: ${metadata.podSelectors}
+          template:
+            metadata:
+              labels: ${metadata.podSelectors}
+            spec:
+              # NO runtimeClassName, NO kata nodeSelector/toleration -> regular node
+              # NO automountServiceAccountToken: false -> SA token IS mounted (the contrast)
+              initContainers:
+                - name: git-clone
+                  image: ${workload.container.image}
+                  command: ["/bin/sh", "-c"]
+                  env: ${dependencies.toContainerEnvs()}    # carries GIT_REPO_URL/GIT_REF/GIT_TOKEN
+                  args:
+                    - |
+                      set -e
+                      BRANCH=""
+                      [ -n "$GIT_REF" ] && BRANCH="--branch $GIT_REF"
+                      rm -rf /workspace/repo
+                      git -c credential.helper='!f() { echo username=x-access-token;
+                        echo "password=$GIT_TOKEN"; }; f' \
+                        clone --depth 1 $BRANCH "$GIT_REPO_URL" /workspace/repo
+                  volumeMounts:
+                    - { name: workspace, mountPath: /workspace }
+              containers:
+                - name: main
+                  image: ${workload.container.image}
+                  imagePullPolicy: ${environmentConfigs.imagePullPolicy}
+                  workingDir: /workspace/repo
+                  command: ["sleep", "infinity"]           # match your sandboxed type
+                  env: ${dependencies.toContainerEnvs()}
+                  envFrom: ${configurations.toContainerEnvFrom()}
+                  resources:
+                    requests:
+                      cpu: ${environmentConfigs.resources.requests.cpu}
+                      memory: ${environmentConfigs.resources.requests.memory}
+                    limits:
+                      cpu: ${environmentConfigs.resources.limits.cpu}
+                      memory: ${environmentConfigs.resources.limits.memory}
+                  volumeMounts:
+                    - { name: workspace, mountPath: /workspace }
+              volumes:
+                - name: workspace
+                  emptyDir: {}
 ```
 
-> Note the bare `$VAR` in the init-container script (not `${...}`): the template
-> engine would otherwise substitute `${...}` and blank the shell variables.
+Notes:
+- Bare `$VAR` in the init-container script (not `${...}`) — the template engine
+  substitutes `${...}` and would blank the shell vars.
+- `env: ${dependencies.toContainerEnvs()}` must be on the **init** container too,
+  or `$GIT_REPO_URL`/`$GIT_TOKEN` won't be set during the clone.
+- If your claude-with-repo type also merges config/secret volumes, mirror those
+  `volumes:`/`volumeMounts:` expressions alongside the `workspace` emptyDir.
 
-## Verify after registering
+## Register + verify
 
 ```bash
-kubectl get clustercomponenttype | grep ai-agent      # both types should list
+kubectl get clustercomponenttype | grep ai-agent      # both types listed
 ```
 
-Then create `agent-regular` from the unsandboxed type and `agent-sandbox` from
-the sandboxed type (RUNBOOK Phase 4/5). The Phase 6 gate (`uname -r` differing)
-confirms only one of them landed on Kata — which is the whole point.
+Create `agent-regular` from this type and `agent-sandbox` from your
+claude-with-repo type. The Phase 6 gate (`uname -r` differing, SA token
+present-vs-absent) confirms the split is real.
+
+---
+
+_Still to fully verify: your exact hand-authored **claude-with-repo** CCT — I
+validated against the shipped `ai-agent-claude`/`ai-agent`/`service` CCTs and the
+blog fragments, not your file. Point me at it (repo path) and I'll diff this
+scaffold against it field-by-field._

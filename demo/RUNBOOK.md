@@ -59,10 +59,13 @@ curl http://internal-billing-api:8080/internal/credentials    # returns fake cre
 
 ## Phase 4 — Deploy `agent-regular` (the baseline)
 
-There is **no "isolation = none" toggle** — the sandboxed agent type always
-expands to a Kata microVM. So the baseline needs its own **ClusterComponentType**:
-an unsandboxed twin of the Claude-with-Repo type (same git-clone workspace + agent
-CLI, minus the Kata/sandbox scheduling). Author it once:
+There is **no "isolation = none" toggle** on the claude-with-repo type — it
+deploys via SandboxTemplate/SandboxClaim and hardcodes Kata + no SA token. (The
+generic `ai-agent` type has an `isolationTier` param, but even its `runc` tier is
+still a sandbox with no SA token — not a valid baseline.) So the baseline needs
+its own **ClusterComponentType**: a plain **Deployment** twin of your
+claude-with-repo type — same git-clone workspace + agent CLI, but a normal pod
+with the SA token mounted. Author it once (verified against the shipped CCTs):
 [`deploy/unsandboxed-agent-cct.md`](deploy/unsandboxed-agent-cct.md).
 
 > This is the honest version of the comparison slide's "same agent, one setting":
