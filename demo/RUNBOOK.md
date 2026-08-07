@@ -59,20 +59,24 @@ curl http://internal-billing-api:8080/internal/credentials    # returns fake cre
 
 ## Phase 4 — Deploy `agent-regular` (the baseline)
 
-Use the **same agent type as the sandbox** — the Claude-with-Repo AI Agent type —
-but with **runtime isolation off / none**. Both agents then get the identical
-workspace (git-clone init container) and agent CLI; the *only* difference is the
-isolation dropdown, which is exactly the story the comparison slide tells
-("same agent, one dropdown"). Making this one a plain Service would skip the
-git-clone mechanism and leave it with no workspace files.
+There is **no "isolation = none" toggle** — the sandboxed agent type always
+expands to a Kata microVM. So the baseline needs its own **ClusterComponentType**:
+an unsandboxed twin of the Claude-with-Repo type (same git-clone workspace + agent
+CLI, minus the Kata/sandbox scheduling). Author it once:
+[`deploy/unsandboxed-agent-cct.md`](deploy/unsandboxed-agent-cct.md).
 
-Portal → **Create component** → **AI Agent** (Claude-with-Repo) → set the repo
-params (below) → **runtime isolation = none** → deploy.
+> This is the honest version of the comparison slide's "same agent, one setting":
+> the two sides are the same workload behind two component types that differ only
+> in isolation — not a dropdown on one type.
+
+Then Portal → **Create component** → **your unsandboxed agent type** → set the
+repo params (below) → deploy. Plain container on a regular node, no Kata.
 
 ## Phase 5 — Deploy `agent-sandbox` (the feature)
 
-Same as Phase 4 but **runtime isolation = Kata microVM**. Same repo params, same
-project/name/model/API key.
+Portal → **Create component** → the **sandboxed** Claude-with-Repo AI Agent type
+→ same repo params, same project/name/model/API key → deploy. This one expands to
+the Kata microVM on the hardware-accelerated pool.
 
 > First one waits ~2–3 min for the bare-metal pool to scale from zero. Deploy
 > **before** recording, or keep a `SandboxWarmPool`.
@@ -174,13 +178,13 @@ From the script's recording checklist:
 
 ---
 
-## To confirm for your cluster
+## Build step + confirm
 
-1. **That the AI Agent type can deploy with isolation = none** (the Phase 4
-   baseline). If it can't, `agent-regular` needs another route to the same
-   workspace + agent CLI — but keeping both on the agent type is the cleaner
-   story and what the comparison slide claims.
-2. **Exact portal labels** for the AI Agent type and the isolation dropdown (Q1).
+- **Build step (once):** author the unsandboxed CCT for the baseline —
+  [`deploy/unsandboxed-agent-cct.md`](deploy/unsandboxed-agent-cct.md). Do this
+  before Phase 4.
+- **Confirm:** exact portal labels/type names for the two agent types (Q1).
 
 _Resolved: workspace files come from the `git-clone` init container of the
-Claude-with-Repo agent type — see Phase 4/5 repo params._
+Claude-with-Repo type; the baseline is a separate unsandboxed CCT (no
+"isolation = none" toggle)._

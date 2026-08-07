@@ -21,17 +21,21 @@ depend on your OpenChoreo version (script Q1 — confirm before recording).
 > The plain-k8s manifest in `internal-billing-api.k8s.yaml` is now just a
 > portable fallback — you don't need it for the portal path.
 
+> Both agents are the **same Claude-with-Repo workload** behind two component
+> types (there's no "isolation = none" toggle on the sandboxed type). Author the
+> unsandboxed twin once — see [`unsandboxed-agent-cct.md`](unsandboxed-agent-cct.md).
+> Both get their workspace from the repo clone (`gitRepoUrl`/`gitRef`/`gitToken`).
+
 ## `agent-regular` — the baseline
-1. Portal → **Create component** → **Service** type.
-2. Point at the agent image / config you're demoing.
-3. Deploy to the demo project. No isolation selected — plain container.
+1. Portal → **Create component** → your **unsandboxed** agent type.
+2. Same repo params, project, name, model, API key.
+3. Deploy. Plain container on a regular node — no Kata.
 
 ## `agent-sandbox` — the feature
-1. Portal → **Create component** → **AI Agent** type.
-2. Same project, name, model, API key.
-3. **Extra step:** choose the **runtime isolation** level (Kata microVM).
-4. Deploy. The control plane pins it to the hardware-accelerated node pool via
-   taints/tolerations — you select no node and write no RuntimeClass.
+1. Portal → **Create component** → the **sandboxed** Claude-with-Repo agent type.
+2. Same repo params, project, name, model, API key.
+3. Deploy. Expands to a Kata microVM, pinned to the hardware-accelerated node
+   pool via taints/tolerations — you select no node and write no RuntimeClass.
 
 > First sandboxed agent waits ~2–3 min for the bare-metal pool to scale from
 > zero. Pre-deploy before recording, or keep a `SandboxWarmPool`.
