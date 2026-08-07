@@ -59,16 +59,41 @@ curl http://internal-billing-api:8080/internal/credentials    # returns fake cre
 
 ## Phase 4 — Deploy `agent-regular` (the baseline)
 
-Portal → **Create component** → **Service** type → point at your agent
-image/config → deploy. Plain container, **no** isolation.
+Use the **same agent type as the sandbox** — the Claude-with-Repo AI Agent type —
+but with **runtime isolation off / none**. Both agents then get the identical
+workspace (git-clone init container) and agent CLI; the *only* difference is the
+isolation dropdown, which is exactly the story the comparison slide tells
+("same agent, one dropdown"). Making this one a plain Service would skip the
+git-clone mechanism and leave it with no workspace files.
+
+Portal → **Create component** → **AI Agent** (Claude-with-Repo) → set the repo
+params (below) → **runtime isolation = none** → deploy.
 
 ## Phase 5 — Deploy `agent-sandbox` (the feature)
 
-Portal → **Create component** → **AI Agent** type → same project/name/model/API
-key → **choose runtime isolation = Kata microVM** → deploy.
+Same as Phase 4 but **runtime isolation = Kata microVM**. Same repo params, same
+project/name/model/API key.
 
 > First one waits ~2–3 min for the bare-metal pool to scale from zero. Deploy
 > **before** recording, or keep a `SandboxWarmPool`.
+
+### Repo params (both agents) — how the demo files get into the workspace
+
+The Claude-with-Repo agent type clones a git repo into the workspace via a
+`git-clone` init container (see the
+[agent-type write-up](https://ketharan.github.io/technical/claude-with-repo-agent-type-openchoreo/)).
+Point both agents at the demo repo:
+
+| Param | Value |
+|---|---|
+| `gitRepoUrl` | `https://github.com/Ketharan/agent-sandbox-demo.git` |
+| `gitRef` | branch/tag (optional; defaults to default branch) |
+| `gitToken` | a GitHub token with read access — **required, the repo is private** |
+
+The repo is shallow-cloned to `/workspace/repo` and the agent's terminal opens
+there, so the demo files land at `/workspace/repo/demo/…`. No manual copying,
+no registry. (`gitToken` is also the private-repo pull access from Phase 1 — the
+init-container clone needs it just like the builder does.)
 
 ## Phase 6 — GATE: verify isolation actually differs
 
@@ -76,6 +101,7 @@ The single check that makes or breaks the demo. In each component's terminal
 (Artifacts tree → component → Terminal), run the reference enumeration:
 
 ```bash
+# terminal opens at /workspace/repo
 node demo/build-metrics-helper/scripts/recon.js
 ```
 
@@ -95,13 +121,14 @@ the Kata runtime. Fix that before going further; the whole demo hinges on it.
 
 ## Phase 7 — Stage the payload in each agent workspace
 
-Use the **local tarball**, not a registry — avoids the DNS/CoreDNS gotcha from
-Part 3 and needs no publish. In each agent's workspace:
+The files are already in the workspace from the repo clone (Phase 4/5). Build the
+**local tarball** — no registry, so no DNS/CoreDNS gotcha, no publish. In each
+agent's terminal (opens at `/workspace/repo`):
 
 ```bash
-# get the demo files into the workspace (clone the repo or copy in), then:
 cd demo/build-metrics-helper && npm pack --pack-destination .. && cd ..
-# sample-app can now install ../build-metrics-helper-1.0.0.tgz
+# demo/build-metrics-helper-1.0.0.tgz now sits next to sample-app;
+# the agent installs it in Phase 8
 
 # point recon at the in-cluster target
 export INTERNAL_API_URL=http://internal-billing-api:8080/internal/credentials
@@ -147,9 +174,13 @@ From the script's recording checklist:
 
 ---
 
-## Two things to confirm for your cluster
+## To confirm for your cluster
 
-1. **How an AI Agent component gets its workspace content** — clone-a-repo vs.
-   drop-files-in-via-terminal. Determines how the sample-app + tarball land in
-   Phase 7. Everything else is version-independent.
+1. **That the AI Agent type can deploy with isolation = none** (the Phase 4
+   baseline). If it can't, `agent-regular` needs another route to the same
+   workspace + agent CLI — but keeping both on the agent type is the cleaner
+   story and what the comparison slide claims.
 2. **Exact portal labels** for the AI Agent type and the isolation dropdown (Q1).
+
+_Resolved: workspace files come from the `git-clone` init container of the
+Claude-with-Repo agent type — see Phase 4/5 repo params._
