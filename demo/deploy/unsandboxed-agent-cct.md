@@ -189,10 +189,25 @@ form's `gitRepoUrl`/`gitRef`/`gitToken`/`model` fields are unchanged.
 
 ## Register + verify
 
+Applyable manifest: [`ai-agent-claude-repo-unsandboxed.yaml`](ai-agent-claude-repo-unsandboxed.yaml).
+Working instance: [`example-agent-regular-component.yaml`](example-agent-regular-component.yaml).
+
 ```bash
+kubectl apply -f demo/deploy/ai-agent-claude-repo-unsandboxed.yaml
+kubectl apply -f demo/deploy/example-agent-regular-component.yaml
 kubectl get clustercomponenttype | grep ai-agent      # both types listed
 ```
 
-Create `agent-regular` from `ai-agent-claude-repo-unsandboxed` and `agent-sandbox`
-from `ai-agent-claude-repo`. Phase 6 gate (`uname -r` differing, SA token
-present-vs-absent, internal reachable-vs-not) confirms the split is real.
+**Verified on k3d** (2026-08): pod `1/1 Running`, git-clone populated
+`/workspace/repo`, SA token PRESENT, host kernel, no runtimeClass. Two gotchas
+found doing it:
+- The Component references the type as **`deployment/ai-agent-claude-repo-unsandboxed`**
+  (`<workloadType>/<name>`), not the bare name.
+- The `500m/1Gi` defaults may not fit a loaded single-node cluster — lower them
+  locally if the pod stays `Pending` on `Insufficient cpu`.
+- In `docker/sandbox-templates:claude-code`, only `git` was confirmed on `PATH`;
+  verify `node`/`claude` locations before relying on them in the demo.
+
+Then `agent-sandbox` from `ai-agent-claude-repo` (needs Kata/bare-metal — won't
+run on k3d). Phase 6 gate (`uname -r` differing, SA token present-vs-absent,
+internal reachable-vs-not) confirms the split is real.

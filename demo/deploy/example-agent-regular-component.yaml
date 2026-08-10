@@ -1,0 +1,36 @@
+# Example instance of the unsandboxed baseline — mirrors what the portal's
+# Backstage `openchoreo:component:create` action produces. Verified on k3d.
+# Deploy-from-image (no build): fixed agent image + runtime env vars.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: agent-regular
+  namespace: default
+spec:
+  autoDeploy: true
+  owner:
+    projectName: default
+  componentType:
+    kind: ClusterComponentType
+    # NOTE: <workloadType>/<cct-name>, not the bare name.
+    name: deployment/ai-agent-claude-repo-unsandboxed
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: agent-regular-workload
+  namespace: default
+spec:
+  owner:
+    componentName: agent-regular
+    projectName: default
+  container:
+    image: docker/sandbox-templates:claude-code
+    env:
+      - { key: ANTHROPIC_MODEL, value: claude-sonnet-4-6 }
+      # Public repo + sentinel token = tokenless quick test.
+      # For the private demo repo, set GIT_REPO_URL to agent-sandbox-demo.git and
+      # supply GIT_TOKEN via a secret env: { key: GIT_TOKEN, valueFrom: { secretKeyRef: { name: <secret>, key: token } } }
+      - { key: GIT_REPO_URL, value: https://github.com/openchoreo/sample-workloads.git }
+      - { key: GIT_REF, value: main }
+      - { key: GIT_TOKEN, value: x-no-token }
