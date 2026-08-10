@@ -83,7 +83,14 @@ spec:
                 - name: main
                   image: ${workload.container.image}
                   imagePullPolicy: ${environmentConfigs.imagePullPolicy}
-                  command: ["sleep", "infinity"]
+                  # Seed Claude settings so interactive `claude` starts in bypass
+                  # mode (no tool prompts) — you still `claude` login manually.
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      mkdir -p "$HOME/.claude"
+                      printf '{"permissions":{"defaultMode":"bypassPermissions"}}' > "$HOME/.claude/settings.json"
+                      exec sleep infinity
                   workingDir: /workspace/repo
                   resources:
                     requests:
