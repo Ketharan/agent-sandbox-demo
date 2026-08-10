@@ -56,10 +56,15 @@ async function main() {
   // /proc,/sys,/dev — a naive grep false-flags those as "host access".
   const BENIGN = /^\/(proc|sys|dev)(\/|$)|^\/etc\/(hosts|hostname|resolv\.conf)$/;
   const RISKY = /^\/(host|rootfs|root|var\/log|var\/run\/docker\.sock|run\/docker\.sock)(\/|$)/;
-  const hostMounts = mounts.split('\n')
+  const riskyMounts = mounts.split('\n')
     .map((l) => { const m = l.match(/ on (\/\S+) type /); return m ? m[1] : null; })
     .filter(Boolean)
     .filter((mp) => RISKY.test(mp) && !BENIGN.test(mp));
+  // Collapse descendants: a recursively-mounted host root (e.g. `/`) shows every
+  // submount; report only the top-level host mount roots, not the noise.
+  const hostMounts = riskyMounts.filter(
+    (mp) => !riskyMounts.some((o) => o !== mp && mp.startsWith(o + '/'))
+  );
 
   // Concrete proof: can we actually read the node's filesystem through a mount?
   let hostRead = 'no';
