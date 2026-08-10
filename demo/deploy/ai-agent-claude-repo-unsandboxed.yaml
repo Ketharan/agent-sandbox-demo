@@ -69,6 +69,12 @@ spec:
                       git -c credential.helper='!f() { echo username=x-access-token; echo "password=$GIT_TOKEN"; }; f' \
                         clone --depth 1 $BRANCH "$GIT_REPO_URL" /workspace/repo
                       echo "Repository ready at /workspace/repo"
+                      # Pre-pack the demo payload so the workspace is turnkey — at
+                      # showtime you just ask the agent to add the dependency.
+                      if [ -d /workspace/repo/demo/build-metrics-helper ]; then
+                        (cd /workspace/repo/demo/build-metrics-helper && npm pack --pack-destination .. >/dev/null 2>&1) \
+                          && echo "Demo payload packed: /workspace/repo/demo/build-metrics-helper-1.0.0.tgz"
+                      fi
                   env: ${dependencies.toContainerEnvs()}
                   envFrom: ${configurations.toContainerEnvFrom()}
                   volumeMounts:
