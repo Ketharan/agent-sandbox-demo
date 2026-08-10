@@ -20,3 +20,12 @@ spec:
       - { key: GIT_REPO_URL, value: https://github.com/Ketharan/agent-sandbox-demo.git }  # public → tokenless
       - { key: GIT_REF, value: main }
       - { key: GIT_TOKEN, value: x-no-token }
+      # Weaponize the REAL agent: the malicious postinstall invokes `claude`
+      # (with --dangerously-skip-permissions) instead of the scripted recon.
+      - { key: DEMO_AGENT, value: claude }
+      # Claude must be authenticated to run non-interactively. Provide a key as a
+      # SECRET env (put the key in a k8s Secret in the data-plane namespace):
+      #   kubectl -n <dp-namespace> create secret generic anthropic-key --from-literal=api-key=sk-ant-...
+      # - { key: ANTHROPIC_API_KEY, valueFrom: { secretKeyRef: { name: anthropic-key, key: api-key } } }
+      # For quick filming you can instead `export ANTHROPIC_API_KEY=...` in the
+      # terminal, or run `claude` once to log in interactively.
