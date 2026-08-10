@@ -28,9 +28,9 @@ spec:
     image: docker/sandbox-templates:claude-code
     env:
       - { key: ANTHROPIC_MODEL, value: claude-sonnet-4-6 }
-      # Public repo + sentinel token = tokenless quick test.
-      # For the private demo repo, set GIT_REPO_URL to agent-sandbox-demo.git and
-      # supply GIT_TOKEN via a secret env: { key: GIT_TOKEN, valueFrom: { secretKeyRef: { name: <secret>, key: token } } }
-      - { key: GIT_REPO_URL, value: https://github.com/openchoreo/sample-workloads.git }
+      # This repo is public, so the sentinel token = tokenless clone.
+      # If you point at a PRIVATE repo, supply a real token as a secret env instead:
+      #   { key: GIT_TOKEN, valueFrom: { secretKeyRef: { name: <secret>, key: token } } }
+      - { key: GIT_REPO_URL, value: https://github.com/Ketharan/agent-sandbox-demo.git }
       - { key: GIT_REF, value: main }
       - { key: GIT_TOKEN, value: x-no-token }

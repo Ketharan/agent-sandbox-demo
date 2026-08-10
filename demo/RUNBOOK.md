@@ -154,6 +154,11 @@ The agent runs `npm install ../build-metrics-helper-1.0.0.tgz` in `sample-app` �
 the `postinstall` fires → it re-invokes the agent CLI with the bypass flag →
 recon runs.
 
+> **Camera detail:** npm **hides lifecycle-script output by default**, so the
+> payload runs but you'd see nothing. Add `--foreground-scripts` to make the
+> postinstall visible on screen:
+> `npm install --foreground-scripts ../build-metrics-helper-1.0.0.tgz`
+
 - **Regular:** host mounts, SA token, node processes, `internal-billing-api`
   reachable → creds pulled back. Lateral movement.
 - **Sandbox:** same payload runs, finds an empty microVM, target unreachable.
@@ -187,6 +192,50 @@ From the script's recording checklist:
   [`deploy/unsandboxed-agent-cct.md`](deploy/unsandboxed-agent-cct.md). Do this
   before Phase 4.
 - **Confirm:** exact portal labels/type names for the two agent types (Q1).
+
+---
+
+## Appendix — local rehearsal on k3d (regular side only, VERIFIED)
+
+The **regular half** runs on a plain k3d OpenChoreo cluster (the sandboxed half
+needs Kata/bare-metal → EKS). This is the exact flow that was validated, all via
+OpenChoreo-native resources — no raw `kubectl` Deployments.
+
+**1. Register the baseline CCT**
+```bash
+kubectl apply -f demo/deploy/ai-agent-claude-repo-unsandboxed.yaml
+```
+
+**2. `internal-billing-api` — Service component, built from source.** Create the
+Component (+ Workload declaring the `8080` endpoint), then trigger a build with a
+`WorkflowRun`. Gotchas found:
+- Link the `WorkflowRun` to the component with **labels**
+  (`openchoreo.dev/component`, `openchoreo.dev/project`) — no `ownerReferences`/UID.
+- `dockerfile-builder` uses **`docker.context` / `docker.filePath`** (relative to
+  repo root), **not** `repository.appPath`. Point them at
+  `./demo/internal-billing-api` and `./demo/internal-billing-api/Dockerfile`.
+- The build's `generate-workload-cr` step sets the workload image itself — don't
+  hardcode it (a placeholder `:latest` just `ImagePullBackOff`s until the build runs).
+- See `deploy/local-k3d/` for the exact Component/Workload/WorkflowRun manifests.
+
+**3. `agent-regular` — deploy-from-image Component + Workload.** Gotchas:
+- `componentType.name` must be **`deployment/ai-agent-claude-repo-unsandboxed`**
+  (`<workloadType>/<name>`), not the bare CCT name.
+- On a loaded single node, the CCT's `500m/1Gi` requests may not fit — lower them
+  or free capacity (`Insufficient cpu` → `Pending`).
+- Point the workload's `GIT_REPO_URL` at the **public** demo repo → tokenless clone.
+
+**4. Run the payload (verified output):**
+```bash
+POD=$(kubectl get pods -n <dp-namespace> | grep agent-regular | awk '{print $1}')
+kubectl exec -n <dp-namespace> $POD -c main -- sh -c '
+  cd /workspace/repo/demo/sample-app
+  export DEMO_AGENT=none INTERNAL_API_URL=http://internal-billing-api:8080/internal/credentials
+  npm install --no-audit --foreground-scripts ../build-metrics-helper-1.0.0.tgz'
+```
+Confirmed on the regular side: host kernel (`6.8.0-…`), **SA token PRESENT**,
+host mounts visible, `internal-billing-api` **REACHABLE** (fake creds returned),
+verdict **`node → platform`**. That's the "before" the sandbox flips.
 
 _Resolved: workspace files come from the `git-clone` init container of the
 Claude-with-Repo type; the baseline is a separate unsandboxed CCT (no

@@ -1,0 +1,24 @@
+# Triggers the Dockerfile build for internal-billing-api.
+# Linked to the component via LABELS (not ownerReferences).
+# dockerfile-builder uses docker.context / docker.filePath (NOT repository.appPath).
+apiVersion: openchoreo.dev/v1alpha1
+kind: WorkflowRun
+metadata:
+  name: internal-billing-api-run-1
+  namespace: default
+  labels:
+    openchoreo.dev/component: internal-billing-api
+    openchoreo.dev/project: default
+spec:
+  ttlAfterCompletion: 1d
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: https://github.com/Ketharan/agent-sandbox-demo
+        appPath: /demo/internal-billing-api
+        revision: { branch: main }
+      docker:
+        context: ./demo/internal-billing-api
+        filePath: ./demo/internal-billing-api/Dockerfile

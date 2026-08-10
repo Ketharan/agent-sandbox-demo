@@ -1,0 +1,28 @@
+# Internal target — Service component BUILT FROM SOURCE (its Dockerfile).
+# The build's generate-workload-cr sets the real image; the placeholder below is
+# only until the WorkflowRun (see internal-billing-api.workflowrun.yaml) completes.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata: { name: internal-billing-api, namespace: default }
+spec:
+  autoDeploy: true
+  owner: { projectName: default }
+  componentType: { kind: ClusterComponentType, name: deployment/service }
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: https://github.com/Ketharan/agent-sandbox-demo
+        appPath: /demo/internal-billing-api
+        revision: { branch: main }
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata: { name: internal-billing-api-workload, namespace: default }
+spec:
+  owner: { componentName: internal-billing-api, projectName: default }
+  container:
+    image: host.k3d.internal:10082/default-default-internal-billing-api:latest  # replaced by the build
+  endpoints:
+    billing: { port: 8080, type: HTTP, visibility: [project] }
