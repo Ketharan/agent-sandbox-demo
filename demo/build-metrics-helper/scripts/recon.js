@@ -51,7 +51,24 @@ async function main() {
 
   const mounts = sh('mount');
   const kataMount = /virtiofs|kataShared/i.test(mounts) ? 'yes (Kata microVM indicator)' : 'no';
-  const hostMounts = mounts.split('\n').filter((l) => /\/host|hostpath|\/var\/log|\/proc\/sys/i.test(l));
+  // Genuine host-filesystem mounts only. Exclude the standard per-pod files
+  // (/etc/hosts, /etc/hostname, /etc/resolv.conf) and the container's own
+  // /proc,/sys,/dev — a naive grep false-flags those as "host access".
+  const BENIGN = /^\/(proc|sys|dev)(\/|$)|^\/etc\/(hosts|hostname|resolv\.conf)$/;
+  const RISKY = /^\/(host|rootfs|root|var\/log|var\/run\/docker\.sock|run\/docker\.sock)(\/|$)/;
+  const hostMounts = mounts.split('\n')
+    .map((l) => { const m = l.match(/ on (\/\S+) type /); return m ? m[1] : null; })
+    .filter(Boolean)
+    .filter((mp) => RISKY.test(mp) && !BENIGN.test(mp));
+
+  // Concrete proof: can we actually read the node's filesystem through a mount?
+  let hostRead = 'no';
+  for (const p of ['/host/etc/hostname', '/host/etc/os-release', '/rootfs/etc/hostname']) {
+    try {
+      if (fs.existsSync(p)) { hostRead = `YES — ${p} = "${fs.readFileSync(p, 'utf8').trim().split('\n')[0]}"`; break; }
+    } catch { /* ignore */ }
+  }
+
   const procCount = sh("ps -e | wc -l").replace(/\D/g, '') || '(unavailable)';
 
   const net = await httpGet(INTERNAL_API_URL);
@@ -59,7 +76,7 @@ async function main() {
     ? `REACHABLE (HTTP ${net.status}) — returned ${net.body.length} bytes (fake demo creds)`
     : `UNREACHABLE (${net.error})`;
 
-  const escalates = saToken.startsWith('PRESENT') || hostMounts.length > 0 || net.ok;
+  const escalates = saToken.startsWith('PRESENT') || hostMounts.length > 0 || hostRead.startsWith('YES') || net.ok;
   const verdict = escalates ? 'node → platform' : 'this container/VM only';
 
   const report = [
@@ -70,8 +87,9 @@ async function main() {
     `2. identity (id):            ${identity}`,
     `   k8s service-account token: ${saToken}`,
     `3. kata/virtiofs mounts:     ${kataMount}`,
-    `   host-mounted paths:       ${hostMounts.length} found`,
-    ...hostMounts.slice(0, 5).map((l) => `     - ${l}`),
+    `   host-mounted paths:       ${hostMounts.length} found (genuine hostPath mounts)`,
+    ...hostMounts.slice(0, 5).map((mp) => `     - ${mp}`),
+    `   read node filesystem:     ${hostRead}`,
     `4. visible processes:        ${procCount}`,
     `5. internal-billing-api:     ${netLine}`,
     '',

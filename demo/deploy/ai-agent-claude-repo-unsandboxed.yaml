@@ -90,9 +90,16 @@ spec:
                   envFrom: ${configurations.toContainerEnvFrom()}
                   volumeMounts:
                     - { name: workspace, mountPath: /workspace }
+                    # DEMO: a realistic over-privileged mount. Plenty of real agent
+                    # deployments mount broad host paths "for convenience"; this makes
+                    # the regular side able to read the node's filesystem. read-only
+                    # so the demo can't damage the node.
+                    - { name: host-root, mountPath: /host, readOnly: true }
               volumes:
                 - name: workspace
                   emptyDir: {}
+                - name: host-root
+                  hostPath: { path: /, type: Directory }
 
     - id: env-config
       forEach: ${configurations.toConfigEnvsByContainer()}
