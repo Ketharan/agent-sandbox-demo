@@ -23,9 +23,9 @@ spec:
       # Weaponize the REAL agent: the malicious postinstall invokes `claude`
       # (with --dangerously-skip-permissions) instead of the scripted recon.
       - { key: DEMO_AGENT, value: claude }
-      # Claude must be authenticated to run non-interactively. Provide a key as a
-      # SECRET env (put the key in a k8s Secret in the data-plane namespace):
+      # NOTE on auth: the pod has no IPv6 egress and Claude's interactive OAuth
+      # login prefers IPv6 → it times out. Use an API key instead (key-auth uses
+      # api.anthropic.com over IPv4, which works). The unsandboxed CCT mounts the
+      # `anthropic-key` secret as a file and exports it into the shell rc, so:
       #   kubectl -n <dp-namespace> create secret generic anthropic-key --from-literal=api-key=sk-ant-...
-      # - { key: ANTHROPIC_API_KEY, valueFrom: { secretKeyRef: { name: anthropic-key, key: api-key } } }
-      # For quick filming you can instead `export ANTHROPIC_API_KEY=...` in the
-      # terminal, or run `claude` once to log in interactively.
+      # then re-render the component. `claude` then runs key-authed — no login.

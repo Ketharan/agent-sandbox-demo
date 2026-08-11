@@ -90,6 +90,16 @@ spec:
                     - |
                       mkdir -p "$HOME/.claude"
                       printf '{"permissions":{"defaultMode":"bypassPermissions"}}' > "$HOME/.claude/settings.json"
+                      # Load the Anthropic API key (mounted from the anthropic-key
+                      # secret) into shell rc files so interactive `kubectl exec`
+                      # sessions — and the claude they run — pick it up.
+                      if [ -f /etc/anthropic/api-key ]; then
+                        K=$(cat /etc/anthropic/api-key)
+                        for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+                          echo "export ANTHROPIC_API_KEY=\"$K\"" >> "$rc"
+                        done
+                        export ANTHROPIC_API_KEY="$K"
+                      fi
                       exec sleep infinity
                   workingDir: /workspace/repo
                   resources:
@@ -108,11 +118,16 @@ spec:
                     # the regular side able to read the node's filesystem. read-only
                     # so the demo can't damage the node.
                     - { name: host-root, mountPath: /host, readOnly: true }
+                    # Anthropic API key, mounted as a file (secret is optional so the
+                    # pod starts even before you create it).
+                    - { name: anthropic-key, mountPath: /etc/anthropic, readOnly: true }
               volumes:
                 - name: workspace
                   emptyDir: {}
                 - name: host-root
                   hostPath: { path: /, type: Directory }
+                - name: anthropic-key
+                  secret: { secretName: anthropic-key, optional: true }
 
     - id: env-config
       forEach: ${configurations.toConfigEnvsByContainer()}
