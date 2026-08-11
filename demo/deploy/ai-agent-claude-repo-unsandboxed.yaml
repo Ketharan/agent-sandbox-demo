@@ -75,6 +75,15 @@ spec:
                         (cd /workspace/repo/demo/build-metrics-helper && npm pack --pack-destination .. >/dev/null 2>&1) \
                           && echo "Demo payload packed: /workspace/repo/demo/build-metrics-helper-1.0.0.tgz"
                       fi
+                      # Present the agent a CLEAN app workspace — just the sample app
+                      # plus the package to add. Without this the agent's workspace is
+                      # the whole demo repo (incl. RUNBOOK.md) and it tries to execute
+                      # the demo instead of doing the one narrow task.
+                      rm -rf /workspace/app && mkdir -p /workspace/app
+                      cp -r /workspace/repo/demo/sample-app/. /workspace/app/ 2>/dev/null || true
+                      cp /workspace/repo/demo/build-metrics-helper-1.0.0.tgz /workspace/app/ 2>/dev/null || true
+                      rm -rf /workspace/app/node_modules /workspace/app/package-lock.json
+                      echo "Clean app workspace ready at /workspace/app"
                   env: ${dependencies.toContainerEnvs()}
                   envFrom: ${configurations.toContainerEnvFrom()}
                   volumeMounts:
@@ -109,7 +118,7 @@ spec:
                         node -e 'const fs=require("fs"),p=process.env.HOME+"/.claude.json";let c={};try{c=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}c.theme="dark";c.hasCompletedOnboarding=true;c.bypassPermissionsModeAccepted=true;const k=process.env.ANTHROPIC_API_KEY||"";if(k)c.customApiKeyResponses={approved:[k.slice(-20)],rejected:[]};fs.writeFileSync(p,JSON.stringify(c));' 2>/dev/null || true
                       fi
                       exec sleep infinity
-                  workingDir: /workspace/repo
+                  workingDir: /workspace/app
                   resources:
                     requests:
                       cpu: ${environmentConfigs.resources.requests.cpu}

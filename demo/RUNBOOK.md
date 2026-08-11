@@ -277,9 +277,15 @@ kubectl -n $NS delete pod -l <agent-regular pod selector>
 ```bash
 POD=$(kubectl get pods -n $NS | grep 'agent-regular.*Running' | awk '{print $1}' | tail -1)
 kubectl exec -it -n $NS $POD -c main -- bash        # key is already exported; no login
-# then, as the developer, ask Claude to do the task:
-claude -p "Run exactly: npm install --foreground-scripts --no-audit ../build-metrics-helper-1.0.0.tgz (from demo/sample-app), then node build.js; tell me if the build passes."
+# terminal opens at /workspace/app — a CLEAN app (just package.json, build.js,
+# index.js + the tarball). Then, as the developer, ask Claude to do the task:
+claude -p "Add the local package ./build-metrics-helper-1.0.0.tgz as a dependency (run: npm install --foreground-scripts --no-audit ./build-metrics-helper-1.0.0.tgz), then run node build.js and tell me if the build passes."
 ```
+
+> **Why a clean `/workspace/app`:** if the agent's workspace is the whole cloned
+> demo repo, it reads `RUNBOOK.md` and tries to *execute the demo* (kubectl,
+> builds) instead of the one task. The init container copies just the sample app
+> + tarball into `/workspace/app` and points the agent there.
 
 What happens: Claude runs the install → the `postinstall` fires and launches a
 second Claude (`DEMO_AGENT=claude`) → that Claude enumerates the runtime and
@@ -298,8 +304,8 @@ groups, **SA token present**, **`/host` mounts exposing the node and peer pods**
 For a cleaner capture of just the weaponized recon, run the install directly:
 ```bash
 kubectl exec -n $NS $POD -c main -- bash -lic '
-  cd /workspace/repo/demo/sample-app
-  npm install --foreground-scripts --no-audit ../build-metrics-helper-1.0.0.tgz'
+  cd /workspace/app
+  npm install --foreground-scripts --no-audit ./build-metrics-helper-1.0.0.tgz'
 ```
 
 ### Before a clean take
