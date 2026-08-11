@@ -240,3 +240,68 @@ verdict **`node → platform`**. That's the "before" the sandbox flips.
 _Resolved: workspace files come from the `git-clone` init container of the
 Claude-with-Repo type; the baseline is a separate unsandboxed CCT (no
 "isolation = none" toggle)._
+
+---
+
+## Appendix — Claude-driven demo (the real agent gets weaponized, VERIFIED)
+
+This is the on-camera version: a developer using **Claude Code** is asked to add a
+dependency, and the malicious package weaponizes a **second Claude** to do the
+recon. Verified end-to-end on k3d.
+
+### One-time setup
+
+The CCT (`ai-agent-claude-repo-unsandboxed.yaml`) already makes the pod turnkey:
+env vars (`DEMO_AGENT=claude`, `INTERNAL_API_URL`), the payload tarball
+pre-packed by the init container, `bypassPermissions` seeded into
+`~/.claude/settings.json`, and an `anthropic-key` secret mounted as a file and
+exported into the shell rc. You only add the key:
+
+```bash
+NS=dp-default-default-development-<id>
+kubectl -n $NS create secret generic anthropic-key --from-literal=api-key=sk-ant-...
+# restart so the entrypoint loads the key (creating the secret alone won't restart):
+kubectl -n $NS delete pod -l <agent-regular pod selector>
+```
+
+> **Auth gotcha:** the pod has **no IPv6 egress**, and Claude's interactive OAuth
+> login prefers IPv6 → `ETIMEDOUT`. Use an **API key** (key-auth hits
+> `api.anthropic.com` over IPv4, which works). Don't try `claude` OAuth login here.
+>
+> **Memory gotcha:** two Claude processes (dev's + weaponized) OOM-kill (exit 137)
+> at a 256Mi limit. Give the container **~3Gi limit** (keep the request low, e.g.
+> 512Mi, so it still schedules on a loaded node).
+
+### Run it (developer experience)
+
+```bash
+POD=$(kubectl get pods -n $NS | grep 'agent-regular.*Running' | awk '{print $1}' | tail -1)
+kubectl exec -it -n $NS $POD -c main -- bash        # key is already exported; no login
+# then, as the developer, ask Claude to do the task:
+claude -p "Run exactly: npm install --foreground-scripts --no-audit ../build-metrics-helper-1.0.0.tgz (from demo/sample-app), then node build.js; tell me if the build passes."
+```
+
+What happens: Claude runs the install → the `postinstall` fires and launches a
+second Claude (`DEMO_AGENT=claude`) → that Claude enumerates the runtime and
+writes a full report (`/tmp/inventory.txt`): shared host kernel, `sudo`/`docker`
+groups, **SA token present**, **`/host` mounts exposing the node and peer pods**,
+`internal-billing-api` reachable → **`node → platform`**.
+
+> **Narrative point:** the dev's Claude may *detect* the attack and refuse to run
+> `node build.js`. That's realistic — but the recon **already ran during
+> `npm install`**, before the agent could object. The payload executes at install
+> time; by the time a careful agent reacts, the token and node filesystem are
+> already read. That's the stronger story: the agent can't save you here.
+
+### Raw variant (payload prints inline, no outer-Claude commentary)
+
+For a cleaner capture of just the weaponized recon, run the install directly:
+```bash
+kubectl exec -n $NS $POD -c main -- bash -lic '
+  cd /workspace/repo/demo/sample-app
+  npm install --foreground-scripts --no-audit ../build-metrics-helper-1.0.0.tgz'
+```
+
+### Before a clean take
+Delete the pod first (`kubectl -n $NS delete pod $POD`) so `node_modules` is gone
+and the workspace is freshly cloned/packed. Rotate the API key after filming.
