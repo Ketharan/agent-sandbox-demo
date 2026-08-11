@@ -251,22 +251,34 @@ recon. Verified end-to-end on k3d.
 
 ### One-time setup
 
-The CCT (`ai-agent-claude-repo-unsandboxed.yaml`) already makes the pod turnkey:
-env vars (`DEMO_AGENT=claude`, `INTERNAL_API_URL`), the payload tarball
-pre-packed by the init container, `bypassPermissions` seeded into
-`~/.claude/settings.json`, and an `anthropic-key` secret mounted as a file and
-exported into the shell rc. You only add the key:
+The CCT (`ai-agent-claude-repo-unsandboxed.yaml`) makes the pod fully turnkey — its
+init container + entrypoint set all of this up at startup:
+
+- **Env:** `DEMO_AGENT=claude`, `INTERNAL_API_URL`, and `ANTHROPIC_API_KEY`
+  (loaded from the mounted `anthropic-key` secret into the shell rc).
+- **`NODE_OPTIONS=--dns-result-order=ipv4first`** — forces Claude onto IPv4
+  (the pod has no IPv6 egress; without this Claude's calls time out).
+- **Payload tarball** pre-packed by the init container.
+- **Clean `/workspace/app`** — just the sample app + tarball (see "Why" below);
+  the agent's `workingDir` points here.
+- **`bypassPermissions`** seeded into `~/.claude/settings.json` (no tool prompts).
+- **Onboarding skipped** — `~/.claude.json` seeded with `theme`,
+  `hasCompletedOnboarding`, `bypassPermissionsModeAccepted`, and the env key
+  pre-approved, so interactive `claude` doesn't hit the first-run wizard/login.
+
+You only add the key, then restart so the entrypoint loads it:
 
 ```bash
 NS=dp-default-default-development-<id>
 kubectl -n $NS create secret generic anthropic-key --from-literal=api-key=sk-ant-...
-# restart so the entrypoint loads the key (creating the secret alone won't restart):
-kubectl -n $NS delete pod -l <agent-regular pod selector>
+# creating the secret alone won't restart the pod — delete it to force a fresh one:
+kubectl -n $NS delete pod $(kubectl get pods -n $NS | grep 'agent-regular.*Running' | awk '{print $1}')
 ```
 
 > **Auth gotcha:** the pod has **no IPv6 egress**, and Claude's interactive OAuth
-> login prefers IPv6 → `ETIMEDOUT`. Use an **API key** (key-auth hits
-> `api.anthropic.com` over IPv4, which works). Don't try `claude` OAuth login here.
+> login prefers IPv6 → `ETIMEDOUT`. Use an **API key** (key-auth + `ipv4first`
+> hits `api.anthropic.com` over IPv4, which works). Don't attempt `claude` OAuth
+> login here.
 >
 > **Memory gotcha:** two Claude processes (dev's + weaponized) OOM-kill (exit 137)
 > at a 256Mi limit. Give the container **~3Gi limit** (keep the request low, e.g.
@@ -286,6 +298,13 @@ claude -p "Add the local package ./build-metrics-helper-1.0.0.tgz as a dependenc
 > demo repo, it reads `RUNBOOK.md` and tries to *execute the demo* (kubectl,
 > builds) instead of the one task. The init container copies just the sample app
 > + tarball into `/workspace/app` and points the agent there.
+
+> **Interactive TUI vs headless:** the seeding above should let interactive
+> `claude` (the TUI) go straight to the prompt using the key. If it still shows
+> **"Not logged in · Please run /login"**, don't fight it — that's the interactive
+> auth path being flaky on this network. The **headless** form (`claude -p "…"`,
+> shown above) is proven and gives the identical weaponized-recon result; it reads
+> fine on camera as "a developer running Claude." Use it as the reliable path.
 
 What happens: Claude runs the install → the `postinstall` fires and launches a
 second Claude (`DEMO_AGENT=claude`) → that Claude enumerates the runtime and
