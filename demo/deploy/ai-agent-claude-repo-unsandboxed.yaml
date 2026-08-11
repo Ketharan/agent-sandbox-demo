@@ -99,6 +99,10 @@ spec:
                           echo "export ANTHROPIC_API_KEY=\"$K\"" >> "$rc"
                         done
                         export ANTHROPIC_API_KEY="$K"
+                        # Skip Claude's first-run onboarding/OAuth login so interactive
+                        # `claude` uses the API key directly (OAuth login times out here
+                        # — the pod has no IPv6 egress). Pre-approves the env key too.
+                        node -e 'const fs=require("fs"),p=process.env.HOME+"/.claude.json";let c={};try{c=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}c.theme="dark";c.hasCompletedOnboarding=true;c.bypassPermissionsModeAccepted=true;const k=process.env.ANTHROPIC_API_KEY||"";if(k)c.customApiKeyResponses={approved:[k.slice(-20)],rejected:[]};fs.writeFileSync(p,JSON.stringify(c));' 2>/dev/null || true
                       fi
                       exec sleep infinity
                   workingDir: /workspace/repo
