@@ -97,8 +97,12 @@ spec:
                         K=$(cat /etc/anthropic/api-key)
                         for rc in "$HOME/.bashrc" "$HOME/.profile"; do
                           echo "export ANTHROPIC_API_KEY=\"$K\"" >> "$rc"
+                          # Force IPv4: the pod has no IPv6 egress, and Claude's
+                          # interactive auth/feature-flag calls otherwise try IPv6.
+                          echo "export NODE_OPTIONS=--dns-result-order=ipv4first" >> "$rc"
                         done
                         export ANTHROPIC_API_KEY="$K"
+                        export NODE_OPTIONS=--dns-result-order=ipv4first
                         # Skip Claude's first-run onboarding/OAuth login so interactive
                         # `claude` uses the API key directly (OAuth login times out here
                         # — the pod has no IPv6 egress). Pre-approves the env key too.
