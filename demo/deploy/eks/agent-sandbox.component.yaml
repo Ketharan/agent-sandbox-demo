@@ -1,0 +1,26 @@
+# Sandboxed agent on EKS — the Kata microVM side.
+# componentType proxy/ai-agent-claude-repo (the sandboxed claude-with-repo type).
+# Deploying this schedules a kata-qemu pod, which triggers the cluster-autoscaler
+# to boot the c6g.metal node (~2-3 min). Deleting the component releases it and
+# the node scales back to zero (~10 min) — see sandbox-updown.sh.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata: { name: agent-sandbox, namespace: default }
+spec:
+  autoDeploy: true
+  owner: { projectName: default }
+  componentType: { kind: ClusterComponentType, name: proxy/ai-agent-claude-repo }
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata: { name: agent-sandbox-workload, namespace: default }
+spec:
+  owner: { componentName: agent-sandbox, projectName: default }
+  container:
+    image: docker/sandbox-templates:claude-code   # multi-arch (arm64 present → runs on c6g.metal)
+    env:
+      - { key: ANTHROPIC_MODEL, value: claude-sonnet-4-6 }
+      - { key: GIT_REPO_URL, value: https://github.com/Ketharan/agent-sandbox-demo.git }
+      - { key: GIT_REF, value: main }
+      - { key: GIT_TOKEN, value: x-no-token }
+      - { key: INTERNAL_API_URL, value: http://internal-billing-api:8080/internal/credentials }

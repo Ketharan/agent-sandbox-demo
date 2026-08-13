@@ -17,13 +17,18 @@ becomes one disposable VM.
 
 ---
 
-## Optional second slide — regular vs sandbox at a glance
+## Second slide — regular vs sandbox, real numbers (captured on EKS)
 
-| | Regular Service | Agent Sandbox |
+| | Regular (`agent-regular`) | Agent Sandbox (`agent-sandbox`) |
 |---|---|---|
-| Kernel | Shared with host | Own guest kernel (Kata microVM) |
-| Internal services | Reachable | Blocked by default, explicitly allowlisted |
-| Host filesystem / processes | Visible | Not accessible |
-| Escape blast radius | Node → platform | One microVM |
-| Cost at rest | — | Node pool scales to zero |
-| Developer effort | — | Pick a component type |
+| Kernel (`uname -r`) | **`6.1.177`** (host — Bottlerocket) | **`6.18.35`** (its own guest kernel) |
+| Kata/virtiofs mounts | none | present (microVM) |
+| SA token | present | absent |
+| Read node filesystem | **yes** — `/host` → Bottlerocket | **no** — no `/host` |
+| `internal-billing-api` | reachable (creds leak) | unreachable (`ENOTFOUND`) |
+| Blast radius | node → platform | this VM only |
+| Cost at rest | — | bare-metal scales to zero |
+| Developer effort | — | pick a component type |
+
+_Same recon, same image, same cluster — every line flips. Verified on the EKS
+recording cluster (`ai-agent-cluster`)._
